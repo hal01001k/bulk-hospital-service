@@ -66,45 +66,45 @@ async def resume_batch(
 ):
     if batch_id not in batch_statuses:
         raise HTTPException(status_code=404, detail="Batch ID not found.")
-    
+
     status = batch_statuses[batch_id]
     if status.status == "processing":
         raise HTTPException(status_code=400, detail="Batch is already being processed.")
-    
     if status.failed == 0 and status.activated:
         raise HTTPException(status_code=400, detail="Batch is already successfully completed and activated.")
 
-    # Identify failed rows
     failed_rows = [res.row for res in status.results if res.status == "failed"]
-    # Identify rows not even attempted (if any)
     processed_rows = [res.row for res in status.results]
-    missing_rows = [i for i, h in enumerate(status.original_hospitals, 1) if i not in processed_rows]
-    
+    missing_rows = [i for i, _ in enumerate(status.original_hospitals, 1) if i not in processed_rows]
     to_retry_indices = set(failed_rows) | set(missing_rows)
-    
-    hospitals_to_retry = []
-    for idx in to_retry_indices:
-        hospitals_to_retry.append({
-            "row": idx,
-            "data": status.original_hospitals[idx-1]
-        })
-    
-    if not hospitals_to_retry and not status.activated:
-        # If all created but activation failed, we should retry activation
-        pass 
-    elif not hospitals_to_retry:
-         raise HTTPException(status_code=400, detail="No failed hospitals to retry.")
 
-    # Reset status for retry
-    status.status = "processing"
-    # Filter out failed results that we are about to retry
-    status.results = [res for res in status.results if res.row not in to_retry_indices]
-    status.processed = len(status.results)
-    status.failed = 0
-    status.start_time = datetime.now()
-    status.end_time = None
-    
-    background_tasks.add_task(process_bulk_hospitals, batch_id, hospitals_to_retry)
+    if to_retry_indices:
+        hospitals_to_retry = [
+            {"row": idx, "data": status.original_hospitals[idx - 1]}
+            for idx in sorted(to_retry_indices)
+        ]
+        status.results = [res for res in status.results if res.row not in to_retry_indices]
+        status.processed = len(status.results)
+        status.failed = 0
+        status.status = "processing"
+        status.start_time = datetime.now()
+        status.end_time = None
+        save_batch_status(status)
+        background_tasks.add_task(process_bulk_hospitals, batch_id, hospitals_to_retry)
+        eta_seconds = len(hospitals_to_retry) * 0.5
+    else:
+        status.status = "processing"
+        status.start_time = datetime.now()
+        status.end_time = None
+        save_batch_status(status)
+        background_tasks.add_task(activate_batch, batch_id)
+        eta_seconds = 1.0
+
+    return BulkProcessAccepted(
+        batch_id=batch_id,
+        status="processing",
+        eta_seconds=eta_seconds
+    )
 
 @app.post("/hospitals/bulk-delete", response_model=BulkDeleteResponse, status_code=202)
 async def bulk_delete_hospitals(
