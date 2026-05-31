@@ -99,6 +99,7 @@ async def create_hospital_task(client: httpx.AsyncClient, hospital: HospitalCrea
         payload = {
             "name": hospital.name,
             "address": hospital.address,
+            "creation_batch_id": str(batch_id),
         }
         if hospital.phone:
             payload["phone"] = hospital.phone
