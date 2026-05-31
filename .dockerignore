@@ -7,3 +7,8 @@ README.md
 .env
 *.pyc
 .DS_Store
+venv
+__pycache__
+.pytest_cache
+.git
+.gitignore
