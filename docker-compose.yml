@@ -1,0 +1,9 @@
+services:
+  app:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - HOSPITAL_API_BASE_URL=https://hospital-directory.onrender.com
+    volumes:
+      - .:/app
