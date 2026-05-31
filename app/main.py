@@ -128,12 +128,6 @@ async def bulk_delete_hospitals(
         failed=0,
         results=[]
     )
-    
-    return BulkProcessAccepted(
-        batch_id=batch_id,
-        status="processing",
-        eta_seconds=len(hospitals_to_retry) * 0.5
-    )
 
 @app.get("/hospitals/batch/{batch_id}/status", response_model=BatchStatus)
 async def get_batch_status(batch_id: UUID):

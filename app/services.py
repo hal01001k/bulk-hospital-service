@@ -7,7 +7,7 @@ from uuid import UUID, uuid4
 from datetime import datetime
 import httpx
 from app.config import settings
-from app.models import HospitalCreate, HospitalBulkResult, BatchStatus, DeleteResult, UpdateResult, BatchActivateResponse
+from app.models import HospitalCreate, HospitalBulkResult, BatchStatus, DeleteResult, UpdateResult, BatchActivateResponse, HospitalUpdate
 
 import json
 import os
@@ -242,7 +242,7 @@ async def delete_hospital_task(client: httpx.AsyncClient, hospital_id: int) -> D
             error=str(e)
         )
 
-async def process_bulk_update(batch_id: UUID, hospitals_to_update: List[Dict]) -> Dict:
+async def process_bulk_update(batch_id: UUID, hospitals_to_update: List[HospitalUpdate]) -> Dict:
     """Process bulk update of hospitals"""
     from app.models import UpdateResult
     
@@ -275,11 +275,11 @@ async def process_bulk_update(batch_id: UUID, hospitals_to_update: List[Dict]) -
         "results": results
     }
 
-async def update_hospital_task(client: httpx.AsyncClient, hospital_update: Dict) -> UpdateResult:
+async def update_hospital_task(client: httpx.AsyncClient, hospital_update: HospitalUpdate) -> UpdateResult:
     """Task to update a single hospital and return result"""
     from app.models import UpdateResult
     
-    hospital_id = hospital_update["id"]
+    hospital_id = hospital_update.id
     try:
         # Get hospital details first
         get_resp = await client.get(f"/hospitals/{hospital_id}")
@@ -292,16 +292,24 @@ async def update_hospital_task(client: httpx.AsyncClient, hospital_update: Dict)
             )
         
         hospital_data = get_resp.json()
-        hospital_name = hospital_update.get("name", hospital_data.get("name", "Unknown"))
+        hospital_name = hospital_update.name or hospital_data.get("name", "Unknown")
         
         # Update the hospital
         update_data = {}
-        if hospital_update.get("name"):
-            update_data["name"] = hospital_update["name"]
-        if hospital_update.get("address"):
-            update_data["address"] = hospital_update["address"]
-        if hospital_update.get("phone"):
-            update_data["phone"] = hospital_update["phone"]
+        if hospital_update.name is not None:
+            update_data["name"] = hospital_update.name
+        if hospital_update.address is not None:
+            update_data["address"] = hospital_update.address
+        if hospital_update.phone is not None:
+            update_data["phone"] = hospital_update.phone
+        
+        if not update_data:
+            return UpdateResult(
+                hospital_id=hospital_id,
+                name=hospital_name,
+                status="failed",
+                error="No update fields provided."
+            )
         
         update_resp = await client.put(f"/hospitals/{hospital_id}", json=update_data)
         if update_resp.status_code in [200, 201]:
