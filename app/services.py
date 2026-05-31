@@ -42,7 +42,7 @@ load_batch_statuses()
 async def process_bulk_hospitals(batch_id: UUID, hospitals_to_create: List[Dict]):
     status = batch_statuses[batch_id]
     
-    async with httpx.AsyncClient(base_url=settings.HOSPITAL_API_BASE_URL, timeout=30.0) as client:
+    async with httpx.AsyncClient(base_url=settings.HOSPITAL_API_BASE_URL, timeout=30.0, http2=False, follow_redirects=True) as client:
         # Create hospitals concurrently
         tasks = [
             create_hospital_task(client, h["data"], h["row"], batch_id)
@@ -96,7 +96,17 @@ async def create_hospital_task(client: httpx.AsyncClient, hospital: HospitalCrea
             data=hospital
         )
     try:
-        resp = await client.post("/hospitals/", json=hospital.model_dump())
+        payload = {
+            "name": hospital.name,
+            "address": hospital.address,
+        }
+        if hospital.phone:
+            payload["phone"] = hospital.phone
+        resp = await client.post(
+            "/hospitals/",
+            content=json.dumps(payload),
+            headers={"Content-Type": "application/json"},
+        )
         if resp.status_code == 200:
             data = resp.json()
             return HospitalBulkResult(
@@ -218,7 +228,7 @@ async def delete_hospital_task(client: httpx.AsyncClient, hospital_id: int) -> D
 
 async def process_bulk_delete(batch_id: UUID, hospital_ids: List[int]) -> Dict:
     """Process bulk deletion of hospitals"""
-    async with httpx.AsyncClient(base_url=settings.HOSPITAL_API_BASE_URL, timeout=30.0) as client:
+    async with httpx.AsyncClient(base_url=settings.HOSPITAL_API_BASE_URL, timeout=30.0, http2=False, follow_redirects=True) as client:
         tasks = [delete_hospital_task(client, hospital_id) for hospital_id in hospital_ids]
         results, successful, failed = await _run_batch_tasks(tasks, success_status="deleted")
 
@@ -233,7 +243,7 @@ async def process_bulk_delete(batch_id: UUID, hospital_ids: List[int]) -> Dict:
 
 async def process_bulk_update(batch_id: UUID, hospitals_to_update: List[HospitalUpdate]) -> Dict:
     """Process bulk update of hospitals"""
-    async with httpx.AsyncClient(base_url=settings.HOSPITAL_API_BASE_URL, timeout=30.0) as client:
+    async with httpx.AsyncClient(base_url=settings.HOSPITAL_API_BASE_URL, timeout=30.0, http2=False, follow_redirects=True) as client:
         tasks = [update_hospital_task(client, hospital) for hospital in hospitals_to_update]
         results, successful, failed = await _run_batch_tasks(tasks, success_status="updated")
 
@@ -284,7 +294,7 @@ async def update_hospital_task(client: httpx.AsyncClient, hospital_update: Hospi
 
 async def activate_batch(batch_id: UUID) -> Dict:
     """Activate a specific batch of hospitals"""
-    async with httpx.AsyncClient(base_url=settings.HOSPITAL_API_BASE_URL, timeout=30.0) as client:
+    async with httpx.AsyncClient(base_url=settings.HOSPITAL_API_BASE_URL, timeout=30.0, http2=False, follow_redirects=True) as client:
         try:
             activate_resp = await client.patch(f"/hospitals/batch/{batch_id}/activate")
             if activate_resp.status_code in [200, 201]:
